@@ -1,0 +1,4 @@
+project: PROJECT
+target: fuzz_emu_arm64_arm
+cmds:
+- cmd: /out/fuzz_emu_arm64_arm
