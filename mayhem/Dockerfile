@@ -15,7 +15,7 @@
 ################################################################################
 
 FROM gcr.io/oss-fuzz-base/base-builder
-RUN sed -i "s|http://archive.ubuntu.com/ubuntu|http://old-releases.ubuntu.com/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://old-releases.ubuntu.com/ubuntu|g" /etc/apt/sources.list && apt-get update && apt-get install -y cmake pkg-config make python3
+RUN sed -i "s|http://archive.ubuntu.com/ubuntu|http://us.archive.ubuntu.com/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://us.archive.ubuntu.com/ubuntu|g" /etc/apt/sources.list && apt-get update && apt-get install -y cmake pkg-config make python3
 COPY . unicorn
 RUN rm -rf unicorn/mayhem
 WORKDIR $SRC
