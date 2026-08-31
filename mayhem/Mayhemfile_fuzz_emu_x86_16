@@ -1,0 +1,45 @@
+# unicorn CPU-emulation fuzz target: raw guest machine code for x86_16 is written into a 4MB
+# mapping and executed with uc_emu_start() — one of the 13 harnesses OSS-Fuzz builds for this
+# project. Built by mayhem/build.sh as a libFuzzer binary linked against the sanitized +
+# coverage-instrumented libunicorn.a; the run-once reproducer for the same code path is
+# /mayhem/fuzz_emu_x86_16-standalone (takes one input file).
+#
+# ── DEVIATION: one of the two targets NOT built from its upstream harness ─────────────────────
+# (the other is fuzz_emu_m68k_be — see mayhem/Mayhemfile_fuzz_emu_m68k_be)
+# It is built from mayhem/fuzz_emu_x86_16.c, not tests/fuzz/fuzz_emu_x86_16.c. The `mayhem`
+# branch is purely additive (no upstream file is touched), so the corrected harness is ADDED under
+# mayhem/ and mayhem/build.sh prefers mayhem/<target>.c over the upstream file of the same name
+# (see build.sh note 4b). The target NAME, the Mayhemfile set and OSS-Fuzz parity are unchanged.
+#
+# WHAT UPSTREAM DOES: tests/fuzz/fuzz_emu_x86_16.c is byte-identical to fuzz_emu_x86_32.c except
+# for UC_MODE_16 vs UC_MODE_32, and so inherits the 32-bit file's `#define ADDRESS 0x1000000`.
+#
+# WHY IT COVERS NOTHING: x86 16-bit is real mode — EIP truncates to 16 bits and the fetch address
+# is CS.base + IP, so starting at 0x1000000 fetches linear (0x1000000 & 0xFFFF) == 0, which is not
+# mapped (the mapping is at 16 MB). uc_emu_start() returns 8 = UC_ERR_FETCH_UNMAPPED on EVERY
+# input, before one guest instruction is translated; the harness swallows the error and returns 0,
+# so the target "runs" forever without ever entering the emulator. Mayhem runs #1 and #2 both
+# ended cleanly after ~104,000 tests with edges_covered = 0, while the other 12 targets from the
+# same build reported 2,630-9,430 edges. Seeds cannot fix this: no input byte is ever decoded.
+#
+# WHAT WE CHANGED: ADDRESS 0x1000000 -> 0x1000 (an entry point real mode can fetch from). Every
+# uc_* call keeps upstream's argument shape, uc_mem_map() included; the /dev/null error sink is
+# also dropped as a no-op the gate flags. Full rationale, including why the mapping is NOT moved
+# to 0, is in the header of mayhem/fuzz_emu_x86_16.c.
+#
+# MEASURED on the commit image, libFuzzer -max_len=4096, empty starting corpus:
+#   upstream harness : 100,000 execs, cov 1555 ft 1556 UNCHANGED from first pulse to last,
+#                      new_units_added 0  (pinned to uc_emu_start()'s error return)
+#   this harness     :  35,501 execs, cov 5387 ft 15665, new_units_added 1786, still climbing
+#
+# No testsuite: directive — the harness takes raw bytes with no structure to seed, and each
+# target reaches thousands of edges from an empty corpus within seconds. Mayhem's default
+# server-side corpus accumulation therefore applies unchanged.
+project: savantenvs/unicorn
+target: fuzz_emu_x86_16
+cmds:
+  - cmd: /mayhem/fuzz_emu_x86_16
+    libfuzzer: true
+    # Mirrors upstream's own tests/fuzz/fuzz_emu.options (max_len = 4096): the harness maps 4MB
+    # and emulates at most 0x1000 instructions, so longer inputs only slow the campaign down.
+    max_length: 4096

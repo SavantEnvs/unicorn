@@ -1,0 +1,47 @@
+# unicorn CPU-emulation fuzz target: raw guest machine code for m68k_be is written into a 4MB
+# mapping and executed with uc_emu_start() — one of the 13 harnesses OSS-Fuzz builds for this
+# project. Built by mayhem/build.sh as a libFuzzer binary linked
+# against the sanitized + coverage-instrumented libunicorn.a; the run-once reproducer for the
+# same code path is /mayhem/fuzz_emu_m68k_be-standalone (takes one input file).
+#
+# ── DEVIATION: one of the two targets NOT built from its upstream harness ─────────────────────
+# It is built from mayhem/fuzz_emu_m68k_be.c, not tests/fuzz/fuzz_emu_m68k_be.c (the other such
+# target is fuzz_emu_x86_16). The `mayhem` branch is purely additive (no upstream file is
+# touched), so the corrected harness is ADDED under mayhem/ and mayhem/build.sh prefers
+# mayhem/<target>.c over the upstream file of the same name (see build.sh note 4b). The target
+# NAME, the Mayhemfile set and OSS-Fuzz parity are unchanged.
+#
+# WHY: uc_open() never runs m68k_cpu_reset(), so env->cc_op is left at CC_OP_DYNAMIC — a value
+# qemu/target/m68k/cpu.h documents as translator-only. The first guest instruction that reads or
+# flushes the condition codes reaches COMPUTE_CCR()'s `default: cpu_abort(...)` in
+# qemu/target/m68k/helper.c, which is a bare abort(). 16 of the 106 cases in this target's own
+# accumulated Mayhem testsuite (15%) abort the upstream harness that way, so Mayhem's 5-iteration
+# pre-analysis smoke test failed whenever it sampled one: event 393863 ("libFuzzer target failed
+# to fuzz for 5 iterations", component `sanity`) fired in runs #3 and #5 and not in #4, on the
+# same revision, and on no other target of the 13.
+#
+# WHAT WE CHANGED: one uc_reg_write(UC_M68K_REG_SR, 0) between uc_open() and uc_mem_map(), which
+# goes through cpu_m68k_set_sr() -> cpu_m68k_set_ccr() and installs CC_OP_FLAGS. The value 0 is
+# the SR the engine already reports, so no architectural state changes; the /dev/null error sink
+# is also dropped as a no-op the gate flags. Full rationale, including why SR 0 beats the
+# architectural reset value 0x2700 here, is in the header of mayhem/fuzz_emu_m68k_be.c.
+#
+# MEASURED on the commit image: aborting testsuite cases 16/106 -> 1/106 (three repeats, stable);
+# libFuzzer 60 s single worker from an empty corpus, seeds 1/2/3:
+#   upstream harness : died after 7 / 18 / 124 execs (~1 s), cov 2178 / 2427 / 2712
+#   this harness     : 10565 / 8972 / 2695 execs,            cov 3619 / 3653 / 3408
+# and over the 90 testsuite cases the upstream harness survives, cov 2986 -> 2997. The one
+# remaining abort (a floating-point encoding reaching g_assert_not_reached() in gen_ea_mode_fp)
+# is a genuine unicorn m68k bug and is deliberately left reportable.
+#
+# No testsuite: directive — the harness takes raw bytes with no structure to seed, and each
+# target reaches thousands of edges from an empty corpus within seconds. Mayhem's default
+# server-side corpus accumulation therefore applies unchanged.
+project: savantenvs/unicorn
+target: fuzz_emu_m68k_be
+cmds:
+  - cmd: /mayhem/fuzz_emu_m68k_be
+    libfuzzer: true
+    # Mirrors upstream's own tests/fuzz/fuzz_emu.options (max_len = 4096): the harness maps 4MB
+    # and emulates at most 0x1000 instructions, so longer inputs only slow the campaign down.
+    max_length: 4096

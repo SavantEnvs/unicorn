@@ -1,0 +1,17 @@
+# unicorn CPU-emulation fuzz target: raw guest machine code for x86_64 is written into a 4MB
+# mapping and executed with uc_emu_start() (tests/fuzz/fuzz_emu_x86_64.c, one of the 13 harnesses
+# OSS-Fuzz builds for this project). Built by mayhem/build.sh as a libFuzzer binary linked
+# against the sanitized + coverage-instrumented libunicorn.a; the run-once reproducer for the
+# same code path is /mayhem/fuzz_emu_x86_64-standalone (takes one input file).
+#
+# No testsuite: directive — the harness takes raw bytes with no structure to seed, and each
+# target reaches thousands of edges from an empty corpus within seconds. Mayhem's default
+# server-side corpus accumulation therefore applies unchanged.
+project: savantenvs/unicorn
+target: fuzz_emu_x86_64
+cmds:
+  - cmd: /mayhem/fuzz_emu_x86_64
+    libfuzzer: true
+    # Mirrors upstream's own tests/fuzz/fuzz_emu.options (max_len = 4096): the harness maps 4MB
+    # and emulates at most 0x1000 instructions, so longer inputs only slow the campaign down.
+    max_length: 4096
